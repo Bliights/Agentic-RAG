@@ -56,8 +56,13 @@ class ReformulationAgent:
         return response["message"]["content"].split('|')
 
 if __name__ == "__main__":
+    import time
+    start = time.time()
     agent = ReformulationAgent()
     #query = "What is the capital of France and who is the president?"
     query = "What should I do to prepare a trip to Paris?"
     reformulated_parts = agent.invoke(query)
+    end = time.time()
+    print(f"Execution time: {end - start:.2f} seconds")
     print(reformulated_parts)
+
