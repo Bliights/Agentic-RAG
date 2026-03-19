@@ -50,3 +50,33 @@ def setup_logging(level: int = logging.INFO) -> None:
     root_logger.addHandler(handler)
 
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("colpali_engine").setLevel(logging.WARNING)
+
+
+def disable_logging(level: int = logging.INFO) -> object:
+    """
+    Decorator that temporarily disables logging during the execution
+    of the decorated function
+
+    Parameters
+    ----------
+    level : int, optional
+        Logging level to disable
+
+    Returns
+    -------
+    object
+        A decorated function with logging temporarily disabled
+    """
+
+    def decorator(func: object) -> object:
+        def wrapper(*args, **kwargs) -> object:
+            logging.disable(level)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                logging.disable(logging.NOTSET)
+
+        return wrapper
+
+    return decorator

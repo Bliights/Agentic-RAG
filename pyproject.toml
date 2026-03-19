@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 
 dependencies = [
+    "colpali-engine>=0.3.14",
     "datasets>=4.8.2",
     "pillow>=12.1.1",
     "qdrant-client>=1.17.1",
