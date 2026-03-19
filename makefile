@@ -27,3 +27,8 @@ fix:
 pre-commit:
 	@echo Run pre-commit...
 	uv run pre-commit run --all-files
+	
+# ------------------ Scripts ---------------------
+launch-db:
+	@echo Starting the Qdrant database...
+	docker-compose up

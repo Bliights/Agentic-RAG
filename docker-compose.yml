@@ -1,0 +1,9 @@
+services:
+  agentic_rag_db:
+    image: qdrant/qdrant:v1.17
+    container_name: agentic_rag_db
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./database:/qdrant/storage
+    restart: unless-stopped
