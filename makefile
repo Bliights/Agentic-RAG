@@ -36,3 +36,7 @@ launch-db:
 process-visual:
 	@echo Starting visual databse processing...
 	uv run python -m src.scripts.retriever.visual.processing
+
+process-textual:
+	@echo Starting textual databse processing...
+	uv run python -m src.scripts.retriever.textual.processing

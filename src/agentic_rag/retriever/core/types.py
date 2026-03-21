@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import TypeVar
 
+import numpy as np
 import torch
 
 T = TypeVar("T", bound="RetrievalResult")
@@ -14,10 +15,15 @@ class RetrievalResult(ABC):
     doc_id: str
     page_id: int
     score: float
-    vector: torch.Tensor
+    vector: torch.Tensor | np.ndarray
 
     @classmethod
-    def from_payload(cls: type[T], payload: dict, score: float, vector: torch.Tensor) -> T:
+    def from_payload(
+        cls: type[T],
+        payload: dict,
+        score: float,
+        vector: torch.Tensor | np.ndarray,
+    ) -> T:
         base_kwargs = {
             "corpus_id": payload.get("corpus_id"),
             "doc_id": payload.get("doc_id"),
@@ -50,11 +56,13 @@ class RetrievalResult(ABC):
 
 @dataclass
 class TextualResult(RetrievalResult):
+    chunk_id: int
     content: str
 
     @classmethod
     def _extra_from_payload(cls, payload: dict) -> dict:
         return {
+            "chunk_id": payload.get("chunk_id"),
             "content": payload.get("content"),
         }
 

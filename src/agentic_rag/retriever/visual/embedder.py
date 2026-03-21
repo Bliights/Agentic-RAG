@@ -3,8 +3,10 @@ import torch
 from colpali_engine.models import ColQwen2, ColQwen2Processor
 from PIL import Image
 
+from agentic_rag.retriever.core.base import BaseEmbedder
 
-class VisualModel:
+
+class VisualEmbedder(BaseEmbedder):
     def __init__(self, model_name: str = "vidore/colqwen2-v0.1") -> None:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model_name = model_name
