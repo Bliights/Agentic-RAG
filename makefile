@@ -40,3 +40,7 @@ process-visual:
 process-textual:
 	@echo Starting textual databse processing...
 	uv run python -m src.scripts.retriever.textual.processing
+
+train-scorer:
+	@echo Starting scorer training...
+	uv run python -m src.scripts.scorer.training
