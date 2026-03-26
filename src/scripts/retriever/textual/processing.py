@@ -25,6 +25,9 @@ setup_logging()
 
 
 def main() -> None:
+    """
+    Build and populate the textual vector database for the RAG pipeline
+    """
     logger.info("Starting visual database creation...")
     database = QdrantHandler(DB_HOST, DB_PORT)
     database.delete_collection(DATABASE_NAME, False)

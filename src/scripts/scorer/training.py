@@ -1,7 +1,6 @@
 import logging
 
 import torch
-from datasets import Dataset
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -23,6 +22,7 @@ from scripts.scorer.config import (
     EPOCHS,
     FEATURE_CACHE_PATH,
     HIDDEN_DIM,
+    METRICS_NB_DOC,
     MODEL_PATH,
     NB_DOCS_RETRIEVAL,
     TEST_RATIO,
@@ -31,33 +31,11 @@ from scripts.scorer.config import (
     VAL_RATIO,
 )
 from scripts.utils.cache import CacheManager
-from scripts.utils.dataset import load_vidore_dataset
+from scripts.utils.dataset import dataset_join, load_vidore_dataset
 from scripts.utils.logging_config import setup_logging
 
 logger = logging.getLogger(__name__)
 setup_logging()
-
-
-def dataset_join(
-    corpus: Dataset,
-    queries: Dataset,
-    qrels: Dataset,
-) -> tuple[dict, dict, dict]:
-    corpus_dict = {item["corpus_id"]: item for item in corpus}
-    query_dict = {item["query_id"]: item for item in queries}
-
-    labels = {}
-    for item in qrels:
-        qid = item["query_id"]
-        doc_id = item["corpus_id"]
-        relevance = item["score"]
-
-        if qid not in labels:
-            labels[qid] = {}
-
-        labels[qid][doc_id] = relevance
-
-    return corpus_dict, query_dict, labels
 
 
 def train_validation_test_split(
@@ -65,6 +43,23 @@ def train_validation_test_split(
     val_ratio: float,
     test_ratio: float,
 ) -> tuple[list[int], list[int], list[int]]:
+    """
+    Split query identifiers into training, validation, and test subsets
+
+    Parameters
+    ----------
+    query_dict : dict
+        Mapping from query IDs to query metadata
+    val_ratio : float
+        Proportion of the non-test data assigned to the validation split
+    test_ratio : float
+        Proportion of the full dataset assigned to the test split
+
+    Returns
+    -------
+    tuple[list[int], list[int], list[int]]
+        Training, validation, and test IDS
+    """
     query_ids = list(query_dict.keys())
 
     total = len(query_ids)
@@ -82,6 +77,24 @@ def train_validation_test_split(
 
 
 def build_doc_maps(textual_res: TextualResult, visual_res: VisualResult) -> tuple[dict, dict, list]:
+    """
+    Aggregate retrieval results into corpus-level score maps
+
+    Parameters
+    ----------
+    textual_res : TextualResult
+        Textual retrieval results for a query
+    visual_res : VisualResult
+        Visual retrieval results for a query
+
+    Returns
+    -------
+    tuple[dict, dict, list]
+        A tuple containing:
+        - a mapping from corpus ID to textual score
+        - a mapping from corpus ID to visual score
+        - the sorted list of all corpus IDs appearing in either map
+    """
     textual_map = {}
     for r in textual_res:
         if r.corpus_id not in textual_map:
@@ -107,6 +120,27 @@ def build_score_vectors(
     labels: dict,
     query_id: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Build aligned score and label tensors for a single query
+
+    Parameters
+    ----------
+    doc_ids : list[str]
+        Ordered list of corpus IDS
+    textual_map : dict
+        Mapping from corpus IDS to textual retrieval score
+    visual_map : dict
+        Mapping from corpus IDS to visual retrieval score
+    labels : dict
+        Mapping from query IDs, corpus IDS to relevance labels
+    query_id : int
+        Identifier of the query
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        Tensors containing textual scores, visual scores, and relevance labels
+    """
     textual_scores, visual_scores, q_labels = [], [], []
 
     for doc_id in doc_ids:
@@ -125,6 +159,21 @@ def normalize_scores(
     textual_scores: torch.Tensor,
     visual_scores: torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Normalize textual and visual score vectors independently
+
+    Parameters
+    ----------
+    textual_scores : torch.Tensor
+        Tensor of textual retrieval scores
+    visual_scores : torch.Tensor
+        Tensor of visual retrieval scores
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        Normalized textual and visual score tensors
+    """
     if len(textual_scores) > 1:
         textual_scores = (textual_scores - textual_scores.mean()) / (textual_scores.std() + 1e-6)
         visual_scores = (visual_scores - visual_scores.mean()) / (visual_scores.std() + 1e-6)
@@ -138,6 +187,25 @@ def pad_or_truncate(
     q_labels: torch.Tensor,
     max_docs: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Pad or truncate score and label tensors to a fixed length
+
+    Parameters
+    ----------
+    textual_scores : torch.Tensor
+        Tensor of textual retrieval scores
+    visual_scores : torch.Tensor
+        Tensor of visual retrieval scores
+    q_labels : torch.Tensor
+        Tensor of relevance labels
+    max_docs : int
+        Target number of items per query
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        Textual scores, visual scores, and labels adjusted to max_docs
+    """
     pad_len = max_docs - len(textual_scores)
 
     if pad_len > 0:
@@ -161,6 +229,31 @@ def process_single_query(
     k: int,
     max_docs: int,
 ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Extract normalized retrieval features and labels for a single query
+
+    Parameters
+    ----------
+    query_id : int
+        Query to process
+    query_dict : dict
+        Mapping from query IDs to query metadata
+    labels : dict
+        Mapping from query IDs, corpus id to relevance labels
+    textual_retriever : TextualRetriever
+        Textual retriever
+    visual_retriever : VisualRetriever
+        Visual retriever
+    k : int
+        Number of candidates retrieved by each retriever
+    max_docs : int
+        Maximum number of documents retained
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor, torch.Tensor]
+        Textual scores, visual scores, and labels for the query
+    """
     query = query_dict[query_id]["query"]
 
     textual_res = textual_retriever.search(query, k=k)
@@ -196,6 +289,30 @@ def build_retrieval_features(
     k: int = 20,
     max_docs: int = 40,
 ) -> tuple[dict, dict, dict]:
+    """
+    Build retrieval feature dictionaries for all queries
+
+    Parameters
+    ----------
+    query_dict : dict
+        Mapping from query IDs to query metadata
+    labels : dict
+        Mapping from query IDs, corpus id to relevance labels
+    textual_retriever : TextualRetriever
+        Textual retriever
+    visual_retriever : VisualRetriever
+        Visual retriever
+    k : int
+        Number of candidates retrieved by each retriever
+    max_docs : int
+        Maximum number of documents retained
+
+    Returns
+    -------
+    tuple[dict, dict, dict]
+        Dictionaries mapping query IDs to textual score tensors, visual score
+        tensors, and relevance label tensors
+    """
     docs_textual_scores, docs_visual_scores, docs_labels_dict = {}, {}, {}
 
     for query_id in tqdm(
@@ -228,11 +345,37 @@ def create_dataloader(
     query_ids: list[int],
     shuffle: bool,
 ) -> DataLoader:
+    """
+    Create a DataLoader for scorer training or evaluation
+
+    Parameters
+    ----------
+    query_dict : dict
+        Mapping from query IDs to query metadata
+    textual_scores : dict
+        Mapping from query IDs to textual score
+    visual_scores : dict
+        apping from query IDs to visual score
+    labels : dict
+        Mapping from query IDs to relevance label
+    query_ids : list[int]
+        Query IDs to include in the dataset
+    shuffle : bool
+        Whether to shuffle dataset items in the DataLoader
+
+    Returns
+    -------
+    DataLoader
+        DataLoader wrapping the scorer dataset
+    """
     dataset = ScorerDataset(query_dict, textual_scores, visual_scores, labels, query_ids)
     return DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=shuffle, num_workers=0)
 
 
 def main() -> None:
+    """
+    Train and evaluate the scorer model used for hybrid score fusion
+    """
     logger.info("Starting Scorer model training...")
     try:
         corpus, queries, qrels = load_vidore_dataset(DATA_FOLDER)
@@ -306,7 +449,7 @@ def main() -> None:
         shuffle=False,
     )
 
-    model = ScorerModel(TRANSFORMER_NAME, HIDDEN_DIM)
+    model = ScorerModel(TRANSFORMER_NAME, HIDDEN_DIM, METRICS_NB_DOC)
 
     logger.info("Starting training...")
     model.fit(train_loader=train_loader, val_loader=val_loader, epochs=EPOCHS)
@@ -315,8 +458,8 @@ def main() -> None:
     test_loss, test_metrics = model._evaluate(test_loader, margin=0.1, verbose=True)
     logger.info(f"Test Loss: {test_loss:.4f}")
     logger.info(
-        f"Test Metrics — nDCG@5: {test_metrics['ndcg@5']:.4f} | "
-        f"Recall@5: {test_metrics['recall@5']:.4f}",
+        f"Test Metrics — nDCG@{METRICS_NB_DOC}: {test_metrics[f'ndcg@{METRICS_NB_DOC}']:.4f} | "
+        f"Recall@{METRICS_NB_DOC}: {test_metrics['recall@{METRICS_NB_DOC}']:.4f}",
     )
     logger.info(f"Saving trained model to: {MODEL_PATH}")
     model.save(MODEL_PATH)

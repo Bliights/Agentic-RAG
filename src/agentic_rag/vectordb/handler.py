@@ -20,10 +20,37 @@ logger = logging.getLogger(__name__)
 
 class QdrantHandler:
     def __init__(self, host: str = "localhost", port: int = 6333) -> None:
+        """
+        Initialize a handler for interacting with a Qdrant vector database
+
+        Parameters
+        ----------
+        host : str, optional
+            Hostname of the Qdrant server
+        port : int, optional
+            Port of the Qdrant server
+        """
         singleton: QdrantSingleton = QdrantSingletonFactory.get_instance(host, port)
         self.client = singleton.client
 
     def create_collection(self, name: str, embedding_type: EmbeddingType, dim: int) -> None:
+        """
+        Create a Qdrant collection with the specified embedding configuration
+
+        Parameters
+        ----------
+        name : str
+            Name of the collection to create
+        embedding_type : EmbeddingType
+            Type of embeddings used
+        dim : int
+            Dimensionality of the embedding vectors
+
+        Raises
+        ------
+        ValueError
+            If an unsupported embedding type is provided
+        """
         try:
             existing = [c.name for c in self.client.get_collections().collections]
 
@@ -57,6 +84,16 @@ class QdrantHandler:
             logger.error(f"Error while creating collection '{name}': {e}")
 
     def delete_collection(self, name: str, verbose: bool = True) -> None:
+        """
+        Delete a collection from the Qdrant database
+
+        Parameters
+        ----------
+        name : str
+            Name of the collection to delete
+        verbose : bool, optional
+            Whether to log the deletion operation
+        """
         self.client.delete_collection(name)
         if verbose:
             logger.info(f"Collection '{name}' deleted")
@@ -68,6 +105,20 @@ class QdrantHandler:
         payloads: list[dict[str,]],
         verbose: bool = True,
     ) -> None:
+        """
+        Insert vectors and their associated payloads into a collection
+
+        Parameters
+        ----------
+        collection_name : str
+            Name of the target collection
+        vectors : list[np.ndarray]
+            List of vectors or multi-vectors to insert
+        payloads : list[dict[str,]]
+            List of payload dictionaries associated with each vector
+        verbose : bool, optional
+            Whether to log the insertion operation
+        """
         points = []
         for vec, payload in zip(vectors, payloads):
             if isinstance(vec, np.ndarray):
@@ -90,6 +141,23 @@ class QdrantHandler:
             logger.info(f"Inserted {len(points)} points into '{collection_name}'")
 
     def search(self, collection_name: str, query_vector: np.ndarray, k: int = 5) -> QueryResponse:
+        """
+        Perform a similarity search in a Qdrant collection
+
+        Parameters
+        ----------
+        collection_name : str
+            Name of the collection to query
+        query_vector : np.ndarray
+            Query embedding vector or multi-vector
+        k : int, optional
+            Number of results to retrieve
+
+        Returns
+        -------
+        QueryResponse
+            Response containing the top-k nearest neighbors and associated metadata
+        """
         if isinstance(query_vector, np.ndarray):
             query_vector = query_vector.tolist()
 

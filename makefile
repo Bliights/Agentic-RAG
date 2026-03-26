@@ -44,3 +44,7 @@ process-textual:
 train-scorer:
 	@echo Starting scorer training...
 	uv run python -m src.scripts.scorer.training
+
+evaluate-rag:
+	@echo Starting RAG evaluation...
+	uv run python -m src.scripts.pipeline.evaluation

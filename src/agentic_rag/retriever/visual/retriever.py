@@ -8,17 +8,44 @@ from agentic_rag.vectordb.handler import QdrantHandler
 
 class VisualRetriever(BaseRetriever):
     def __init__(self, collection_name: str, db_handler: QdrantHandler, embedder_name: str) -> None:
+        """
+        Initialize a visual retriever
+
+        Parameters
+        ----------
+        collection_name : str
+            Name of the Qdrant collection storing visual embeddings
+        db_handler : QdrantHandler
+            Handler used to communicate with the Qdrant database
+        embedder_name : str
+            Name or identifier of the visual embedding model
+        """
         self.collection_name = collection_name
         self.db = db_handler
         self.embedder = VisualEmbedder(embedder_name)
 
     def search(self, query: str, k: int = 5) -> list[VisualResult]:
+        """
+        Retrieve the top-k most relevant visual results for a given query
+
+        Parameters
+        ----------
+        query : str
+            Input query
+        k : int, optional
+            Number of results to return
+
+        Returns
+        -------
+        list[VisualResult]
+            Ranked list of visual retrieval results
+        """
         query_emb = self.embedder.encode_query(query)
 
         matching = self.db.search(
             collection_name=self.collection_name,
             query_vector=self.embedder.to_numpy(query_emb),
-            k=k * 5,
+            k=k * 2,
         )
 
         candidates = [

@@ -8,12 +8,32 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer, BatchEncoding
 
+from agentic_rag.utils.metrics import ndcg_at_k, recall_at_k
+
 
 class ScorerModel(nn.Module):
-    def __init__(self, model_name: str = "distilbert-base-uncased", hidden_dim: int = 256) -> None:
+    def __init__(
+        self,
+        model_name: str = "distilbert-base-uncased",
+        hidden_dim: int = 256,
+        metrics_nb: int = 5,
+    ) -> None:
+        """
+        Initialize the scorer model used to predict the weight alpha from a query
+
+        Parameters
+        ----------
+        model_name : str, optional
+            Name of the pretrained transformer model
+        hidden_dim : int, optional
+            Hidden dimension of the scoring MLP
+        metrics_nb : int, optional
+            Cutoff value used for ranking metrics
+        """
         super().__init__()
         self.model_name = model_name
         self.hidden_dim = hidden_dim
+        self.metrics_nb = metrics_nb
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.encoder = AutoModel.from_pretrained(model_name)
@@ -26,11 +46,26 @@ class ScorerModel(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(h, hidden_dim),
             nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
             nn.Linear(hidden_dim, 1),
             nn.Sigmoid(),
         )
 
     def tokenize(self, queries: list[str]) -> BatchEncoding:
+        """
+        Tokenize a batch of query strings
+
+        Parameters
+        ----------
+        queries : list[str]
+            List of query strings to tokenize
+
+        Returns
+        -------
+        BatchEncoding
+            Tokenized queries
+        """
         return self.tokenizer(
             queries,
             padding=True,
@@ -40,11 +75,37 @@ class ScorerModel(nn.Module):
         )
 
     def forward(self, **kwargs: torch.Tensor) -> torch.Tensor:
+        """
+        Compute alpha coefficients for a batch of tokenized queries
+
+        Parameters
+        ----------
+        **kwargs : torch.Tensor
+            Tokenized query inputs
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted alpha coefficients
+        """
         outputs = self.encoder(**kwargs)
         cls = outputs.last_hidden_state[:, 0]
         return self.mlp(cls).squeeze(-1)
 
     def predict(self, queries: list[str]) -> torch.Tensor:
+        """
+        Predict alpha coefficients for a list of raw query
+
+        Parameters
+        ----------
+        queries : list[str]
+            List of input query
+
+        Returns
+        -------
+        torch.Tensor
+            Predicted alpha coefficients
+        """
         self.eval()
         tokens = self.tokenize(queries)
         tokens = {k: v.to(self.device) for k, v in tokens.items()}
@@ -52,37 +113,29 @@ class ScorerModel(nn.Module):
         with torch.no_grad():
             return self(**tokens)
 
-    def dcg(self, scores: np.ndarray) -> float:
-        return sum((2**rel - 1) / np.log2(i + 2) for i, rel in enumerate(scores))
-
-    def ndcg_at_k(self, pred_scores: np.ndarray, true_labels: np.ndarray, k: int = 5) -> float:
-        idx = np.argsort(pred_scores)[::-1][:k]
-        gains = true_labels[idx]
-
-        ideal_idx = np.argsort(true_labels)[::-1][:k]
-        ideal_gains = true_labels[ideal_idx]
-
-        if self.dcg(ideal_gains) == 0:
-            return 0
-
-        return self.dcg(gains) / (self.dcg(ideal_gains))
-
-    def recall_at_k(self, pred_scores: np.ndarray, true_labels: np.ndarray, k: int = 5) -> float:
-        idx = np.argsort(pred_scores)[::-1][:k]
-        gains = true_labels[idx]
-
-        relevant_total = (true_labels > 0).sum()
-        if relevant_total == 0:
-            return 1.0
-
-        return float((gains > 0).sum()) / float(relevant_total)
-
     def _pairwise_loss(
         self,
         scores: torch.Tensor,
         labels: torch.Tensor,
         margin: float,
     ) -> torch.Tensor:
+        """
+        Compute a pairwise ranking loss over a batch of predicted scores
+
+        Parameters
+        ----------
+        scores : torch.Tensor
+            Predicted fused scores for retrieved items
+        labels : torch.Tensor
+            Ground-truth labels for retrieved items
+        margin : float
+            Margin applied in the pairwise ranking objective
+
+        Returns
+        -------
+        torch.Tensor
+            Loss value averaged over all valid item pairs in the batch
+        """
         losses = []
 
         for b in range(labels.shape[0]):
@@ -118,6 +171,22 @@ class ScorerModel(nn.Module):
         lr: float = 2e-5,
         margin: float = 0.1,
     ) -> None:
+        """
+        Train the scorer model and keep the best checkpoint based on validation NDCG
+
+        Parameters
+        ----------
+        train_loader : DataLoader
+            Training dataset
+        val_loader : DataLoader
+            Validation dataset
+        epochs : int
+            Number of training epochs
+        lr : float, optional
+            Learning rate
+        margin : float, optional
+            Margin used in the pairwise ranking loss
+        """
         self.to(self.device)
         optimizer = torch.optim.AdamW(self.parameters(), lr=lr)
 
@@ -136,12 +205,12 @@ class ScorerModel(nn.Module):
                 epoch_bar.set_postfix_str(
                     f"train_loss={train_loss:.4f}  "
                     f"val_loss={val_loss:.4f}  "
-                    f"ndcg@5={val_metrics['ndcg@5']:.3f}  "
-                    f"recall@5={val_metrics['recall@5']:.3f}",
+                    f"ndcg@{self.metrics_nb}={val_metrics[f'ndcg@{self.metrics_nb}']:.3f}  "
+                    f"recall@{self.metrics_nb}={val_metrics[f'recall@{self.metrics_nb}']:.3f}",
                 )
 
-                if best_ndcg < val_metrics["ndcg@5"]:
-                    best_ndcg = val_metrics["ndcg@5"]
+                if best_ndcg < val_metrics[f"ndcg@{self.metrics_nb}"]:
+                    best_ndcg = val_metrics[f"ndcg@{self.metrics_nb}"]
                     best_weights = copy.deepcopy(self.state_dict())
 
         self.load_state_dict(best_weights)
@@ -152,6 +221,23 @@ class ScorerModel(nn.Module):
         optimizer: torch.optim.Optimizer,
         margin: float,
     ) -> float:
+        """
+        Train the model for one epoch
+
+        Parameters
+        ----------
+        dataloader : DataLoader
+            Dataset provided
+        optimizer : torch.optim.Optimizer
+            Optimizer used to update model parameters
+        margin : float
+            Margin used in the pairwise ranking loss
+
+        Returns
+        -------
+        float
+            Average training loss over the epoch
+        """
         self.train()
         total_loss = 0.0
 
@@ -194,6 +280,23 @@ class ScorerModel(nn.Module):
         margin: float,
         verbose: bool = False,
     ) -> float:
+        """
+        Evaluate the model
+
+        Parameters
+        ----------
+        dataloader : DataLoader
+            Dataset used for evaluation
+        margin : float
+            Margin used in the pairwise ranking loss
+        verbose : bool, optional
+            Whether to display a progress bar during evaluation
+
+        Returns
+        -------
+        float
+            the average loss and a dictionary of ranking metrics computed over the dataset
+        """
         self.eval()
         total_loss = 0.0
         ndcg_scores = []
@@ -231,20 +334,33 @@ class ScorerModel(nn.Module):
                     pred = scores[i].cpu().numpy()
                     y = labels[i].cpu().numpy()
 
-                    ndcg_scores.append(self.ndcg_at_k(pred, y))
-                    recall_scores.append(self.recall_at_k(pred, y))
+                    ndcg_scores.append(ndcg_at_k(pred, y, self.metrics_nb))
+                    recall_scores.append(recall_at_k(pred, y, self.metrics_nb))
 
                 if verbose:
                     iterator.set_postfix_str(f"loss={loss.item():.4f}")
 
         metrics = {
-            "ndcg@5": float(np.mean(ndcg_scores)),
-            "recall@5": float(np.mean(recall_scores)),
+            f"ndcg@{self.metrics_nb}": float(np.mean(ndcg_scores)),
+            f"recall@{self.metrics_nb}": float(np.mean(recall_scores)),
         }
 
         return total_loss / len(dataloader), metrics
 
     def save(self, path: str) -> None:
+        """
+        Save the model configuration and weights to disk
+
+        Parameters
+        ----------
+        path : str
+            Destination file path
+
+        Raises
+        ------
+        ValueError
+            If the parent directory of path does not exist
+        """
         directory = os.path.dirname(path)
         if directory and not os.path.exists(directory):
             raise ValueError(f"Directory '{directory}' does not exist.")
@@ -263,6 +379,28 @@ class ScorerModel(nn.Module):
         path: str,
         device: torch.device | None = None,
     ) -> "ScorerModel":
+        """
+        Load a scorer model from disk
+
+        Parameters
+        ----------
+        path : str
+            Path to the saved model
+        device : torch.device | None, optional
+            Device on which to load the model
+
+        Returns
+        -------
+        ScorerModel
+            Loaded scorer model in evaluation mode
+
+        Raises
+        ------
+        FileNotFoundError
+            If the file does not exist
+        RuntimeError
+            If the file cannot be loaded correctly
+        """
         if not os.path.exists(path):
             raise FileNotFoundError(f"Model file '{path}' does not exist.")
 

@@ -24,6 +24,25 @@ class RetrievalResult(ABC):
         score: float,
         vector: torch.Tensor | np.ndarray,
     ) -> T:
+        """
+        Build a retrieval result instance from a payload dictionary
+
+        Parameters
+        ----------
+        cls : type[T]
+            Concrete subclass of RetrievalResult to instantiate
+        payload : dict
+            Payload containing metadata
+        score : float
+            Similarity or relevance score
+        vector : torch.Tensor | np.ndarray
+            Embedding vector
+
+        Returns
+        -------
+        T
+            Instantiated retrieval result object
+        """
         base_kwargs = {
             "corpus_id": payload.get("corpus_id"),
             "doc_id": payload.get("doc_id"),
@@ -40,17 +59,18 @@ class RetrievalResult(ABC):
     @abstractmethod
     def _extra_from_payload(cls, payload: dict) -> dict:
         """
-        Specific information from the subclasses
+        Extract subclass-specific fields from a payload dictionary
 
         Parameters
         ----------
         payload : dict
-            _description_
+            Payload containing metadata
 
         Returns
         -------
         dict
-            _description_
+            Dictionary of keyword arguments required to instantiate the
+            subclass-specific fields
         """
 
 
@@ -61,6 +81,19 @@ class TextualResult(RetrievalResult):
 
     @classmethod
     def _extra_from_payload(cls, payload: dict) -> dict:
+        """
+        Extract subclass-specific fields from a payload dictionary
+
+        Parameters
+        ----------
+        payload : dict
+            Payload containing metadata
+
+        Returns
+        -------
+        dict
+            Dictionary containing the textual chunk identifier and content
+        """
         return {
             "chunk_id": payload.get("chunk_id"),
             "content": payload.get("content"),
@@ -73,6 +106,19 @@ class VisualResult(RetrievalResult):
 
     @classmethod
     def _extra_from_payload(cls, payload: dict) -> dict:
+        """
+        Extract subclass-specific fields from a payload dictionary
+
+        Parameters
+        ----------
+        payload : dict
+            Payload containing metadata
+
+        Returns
+        -------
+        dict
+            Dictionary containing the image path
+        """
         return {
             "image_path": payload.get("image_path"),
         }
