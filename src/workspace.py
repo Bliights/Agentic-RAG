@@ -1,0 +1,1 @@
+model_name = "ministral-3:3b"
