@@ -27,3 +27,32 @@ fix:
 pre-commit:
 	@echo Run pre-commit...
 	uv run pre-commit run --all-files
+
+# ------------------ Scripts ---------------------
+launch-db:
+	@echo Starting the Qdrant database...
+	docker-compose up
+
+process-visual:
+	@echo Starting visual databse processing...
+	uv run python -m src.scripts.retriever.visual.processing
+
+process-textual:
+	@echo Starting textual databse processing...
+	uv run python -m src.scripts.retriever.textual.processing
+
+train-scorer:
+	@echo Starting scorer training...
+	uv run python -m src.scripts.scorer.training
+
+evaluate-rag:
+	@echo Starting RAG evaluation...
+	uv run python -m src.scripts.pipeline.evaluation
+
+execution-duration:
+	@echo Starting execution duration evaluation...
+	uv run python -m src.scripts.pipeline.execution
+
+launch-app:
+	@echo Starting demo...
+	uv run python -m streamlit run src/scripts/app/app.py
