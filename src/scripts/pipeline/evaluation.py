@@ -9,6 +9,7 @@ from scripts.pipeline.config import (
     DATA_FOLDER,
     DB_HOST,
     DB_PORT,
+    LLM_MODEL_NAME,
     METRICS_NB_DOC,
     MODE,
     NB_RETRIEVE,
@@ -137,6 +138,7 @@ def main() -> None:
         TEXTUAL_EMBEDDER,
         VISUAL_EMBEDDER,
         scorer_model_path=SCORER_PATH,
+        llm_model_name=LLM_MODEL_NAME,
     )
     logger.info(f"Starting evaluation for mode : {MODE.value}")
     ndcg_score, recall_score = evaluate_rag(pipeline, query_dict, labels, METRICS_NB_DOC)

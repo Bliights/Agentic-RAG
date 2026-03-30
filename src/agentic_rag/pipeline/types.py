@@ -20,3 +20,9 @@ class HybridResult:
 class RetrieverMode(StrEnum):
     RRF = "RRF"
     ALPHA = "alpha"
+
+
+@dataclass
+class PipelineAnswer:
+    answer: str
+    docs: list[HybridResult]

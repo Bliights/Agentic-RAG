@@ -48,3 +48,7 @@ train-scorer:
 evaluate-rag:
 	@echo Starting RAG evaluation...
 	uv run python -m src.scripts.pipeline.evaluation
+
+execution-duration:
+	@echo Starting execution duration evaluation...
+	uv run python -m src.scripts.pipeline.execution
