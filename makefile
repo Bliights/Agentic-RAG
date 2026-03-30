@@ -52,3 +52,7 @@ evaluate-rag:
 execution-duration:
 	@echo Starting execution duration evaluation...
 	uv run python -m src.scripts.pipeline.execution
+
+launch-app:
+	@echo Starting demo...
+	uv run python -m streamlit run src/scripts/app/app.py
