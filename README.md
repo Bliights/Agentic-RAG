@@ -5,6 +5,7 @@
 2. [Development](#development)
 3. [Reproducibility](#reproducibility)
 4. [Project Structure](#project-structure)
+5. [Reusing the package](#reusing-the-package)
 5. [Contributors](#contributors)
 
 ## Overview
@@ -59,9 +60,10 @@ This project follows the best practices we currently rely on for building mainta
 ### Requirements
 ***
 - **Python 3.12**
-- **`uv`** (recommended) for dependency management and editable installs (alternatively, you can use `pip install -e .` and manage dependencies via `requirements.txt`).
+- [**`uv`**](https://docs.astral.sh/uv/) (recommended) for dependency management and editable installs (alternatively, you can use `pip install -e .` and manage dependencies via `requirements.txt`).
 - **`make`** (recommended) to use the provided Makefile commands (alternatively, you can execute the underlying commands manually).
-- **`docker`** (recommended) to run the database locally in a containerized environment (alternatively, you can set up a local database without Docker, but make sure to update the connection settings accordingly).
+- [**`docker`**](https://www.docker.com/) (recommended) to run the database locally in a containerized environment (alternatively, you can set up a local database without Docker, but make sure to update the connection settings accordingly).
+- [**`ollama`**](https://ollama.com/) (required) is used to run the local LLMs that power the agents (the agent architecture is built around Ollama rather than external API calls). You can run any model you prefer, but be sure to update the configuration accordingly and download the necessary models before running the agents (e.g., `ollama pull ministral-3:3b`).
 
 ### Environment setup
 ***
@@ -128,9 +130,20 @@ This repository is organized like a typical Python package so that you can reuse
 The rest of the folders are organized as follows:
 
 - **[`data/`](./data/)** : Folder to store the images of the dataset
-- **[`database/`](./database/)** : Folder to store the database (mount files)
-- **[`models/`](./models/)** : saved weights of the scorer models
-- **[`src/`](./src/)** : Folder with all the code
+- **[`database/`](./database/)** : Folder to store the database (mounted files)
+- **[`models/`](./models/)** : Stores trained model weights
+- **[`src/`](./src/)** : Main source code directory
+
+## Reusing the package
+You can also install this package independently in any of your projects with:
+```bash
+uv pip install git+https://github.com/Bliights/Agentic-RAG
+```
+or
+```bash
+pip install git+https://github.com/Bliights/Agentic-RAG
+```
+
 
 ## Contributors
 ***
